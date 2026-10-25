@@ -1,0 +1,46 @@
+name: Student projects CI
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, 'team/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate projects and generate gallery
+        run: python scripts/project_ci.py --output dist
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Upload preview artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-preview-${{ github.run_number }}
+          path: dist/
+          retention-days: 14
+  browser-smoke:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install playwright==1.56.0
+      - run: python -m playwright install --with-deps chromium
+      - name: Build gallery
+        run: python scripts/project_ci.py --output dist
+      - name: Run browser smoke tests
+        run: python scripts/browser_smoke.py --root dist
